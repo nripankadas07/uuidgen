@@ -304,3 +304,37 @@ class Namespaces(Mapping[str, UUID]):
 
     def generate(self, namespace_key: str, name: Union[str, bytes]) -> UUID:
         """Look up ``namespace_key`` in the table and v5-generate ``name``."""
+
+
+def load_namespaces(source):
+    """Parse a namespace table from TOML, JSON, or a dict mapping name -> UUID."""
+    from collections.abc import Mapping
+    from pathlib import Path as _Path
+    import json as _json
+    try:
+        import tomllib as _tomllib
+    except ImportError:
+        _tomllib = None
+    if isinstance(source, Mapping):
+        raw = dict(source)
+    else:
+        path = _Path(source)
+        text = path.read_text(encoding="utf-8")
+        if path.suffix.lower() == ".toml":
+            if _tomllib is None:
+                raise UuidGenError("TOML namespace files require Python 3.11+")
+            raw = _tomllib.loads(text)
+        else:
+            try:
+                raw = _json.loads(text)
+            except _json.JSONDecodeError as e:
+                raise UuidGenError(f"failed to parse JSON: {e}") from e
+        if not isinstance(raw, Mapping):
+            raise UuidGenError("namespace table must be a mapping at top level")
+    table = {}
+    for name, value in raw.items():
+        if not isinstance(name, str):
+            raise UuidGenError(f"namespace name must be str, got {type(name).__name__}")
+        table[name] = parse(value)
+    return Namespaces(table)
+
